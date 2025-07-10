@@ -49,8 +49,7 @@ def vista_principal(ruta_ordenes) -> None:
     # 4️⃣ Agregar a orden
     if st.button("📥 Agregar seleccionados a orden"):
         seleccionados = st.session_state.get("seleccionados_actuales", [])
-
-        if isinstance(seleccionados, list) and len(seleccionados) > 0:
+        if seleccionados:
             df_sel = pd.DataFrame(seleccionados)
 
             columnas_requeridas = ["Código", "Nombre", "Cantidad a comprar", "Último costo", "Descuento"]
