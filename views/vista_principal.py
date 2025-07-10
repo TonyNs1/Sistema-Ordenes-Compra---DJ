@@ -13,42 +13,52 @@ from utils.ordenes       import init_orden, add_items, close_order
 from utils.exporter      import exportar_usando_machote
 from utils.grid          import mostrar_aggrid
 
-
 def vista_principal(ruta_ordenes) -> None:
     st.title("📦 Sistema de órdenes de compra – Depósito Jiménez")
 
-    # 🎨 Estilo para filas alternas en AgGrid
-    st.markdown(
-        """
+    st.markdown("""
         <style>
         .ag-theme-streamlit .fila-alterna {
             background-color: #f4f4f4 !important;
         }
         </style>
-        """,
-        unsafe_allow_html=True
-    )
+    """, unsafe_allow_html=True)
 
-    # 1️⃣ Cargar archivo
-    if not cargar_archivo_excel(TEMP_FILE):
+    nuevo_archivo_cargado = cargar_archivo_excel(TEMP_FILE)
+    if not nuevo_archivo_cargado:
         st.stop()
 
     df_stock = st.session_state.df
     init_orden()
 
-    # 2️⃣ Parámetros y filtros
     days_min, days_max, margin = mostrar_parametros()
-    df_calc = compute_suggestions(df_stock, days_min, days_max, margin)
+
+    es_nuevo = st.session_state.pop("archivo_nuevo", False)
+
+    if es_nuevo:
+        df_calc = compute_suggestions(df_stock, days_min, days_max, margin)
+        st.session_state.df_calc = df_calc.copy()
+        st.success("✅ Archivo nuevo detectado y tabla recalculada.")
+    else:
+        if "df_calc" not in st.session_state:
+            df_calc = compute_suggestions(df_stock, days_min, days_max, margin)
+            st.session_state.df_calc = df_calc.copy()
+        else:
+            df_calc = st.session_state.df_calc
+
+        if st.button("🔁 Recalcular tabla", help="Haz clic aquí si quieres actualizar los cálculos."):
+            df_calc = compute_suggestions(df_stock, days_min, days_max, margin)
+            st.session_state.df_calc = df_calc.copy()
+            st.success("✅ Tabla recalculada correctamente.")
+
     extra = st.session_state.get("extra_cols", [])
     df_disp = apply_filters(df_calc, extra)
 
-    # 3️⃣ Tabla principal
     grid_main = mostrar_aggrid(df_disp, editable=False, seleccionar_filas=True, key="tabla_principal")
-    st.session_state["seleccionados_actuales"] = grid_main.get("selected_rows", [])
+    seleccionados = grid_main.get("selected_rows", [])
+    st.session_state["seleccionados_actuales"] = seleccionados
 
-    # 4️⃣ Agregar a orden
     if st.button("📥 Agregar seleccionados a orden"):
-        seleccionados = st.session_state.get("seleccionados_actuales", [])
         if isinstance(seleccionados, (list, pd.DataFrame)) and not pd.DataFrame(seleccionados).empty:
             df_sel = pd.DataFrame(seleccionados)
 
@@ -64,7 +74,6 @@ def vista_principal(ruta_ordenes) -> None:
         else:
             st.warning("⚠️ No seleccionaste productos.")
 
-    # 5️⃣ Orden en curso
     if st.session_state.orden_en_curso:
         with st.expander("🧾 Orden en curso", True):
             df_order = pd.DataFrame(st.session_state.orden_en_curso)
@@ -77,10 +86,9 @@ def vista_principal(ruta_ordenes) -> None:
                 key="order_editor_grid"
             )
 
-            # 💾 Guardar cambios
             if st.button("💾 Guardar cambios en la orden"):
                 try:
-                    df_guardado = pd.DataFrame(grid_order["data"]).copy()
+                    df_guardado = pd.DataFrame(grid_order["data"])
 
                     columnas_esperadas = {
                         "Código": "Código",
@@ -107,7 +115,6 @@ def vista_principal(ruta_ordenes) -> None:
 
             nombre_usr = st.text_input("📝 Nombre para esta orden", placeholder="Ej: Ferretería Los Ángeles")
 
-            # ✅ Cerrar orden
             if st.button("✅ Cerrar orden"):
                 try:
                     nombre  = nombre_usr.strip() or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -131,7 +138,6 @@ def vista_principal(ruta_ordenes) -> None:
 
                     close_order(lambda *_, proveedor=None: ruta_final, nombre_orden=nombre)
 
-                    # Desmarcar productos
                     if isinstance(st.session_state.df, pd.DataFrame):
                         st.session_state.df["Seleccionar"] = False
                         st.session_state.df = st.session_state.df.to_dict(orient="records")
@@ -140,7 +146,6 @@ def vista_principal(ruta_ordenes) -> None:
                             if isinstance(row, dict) and "Seleccionar" in row:
                                 row["Seleccionar"] = False
 
-                    # 📥 Botón de descarga
                     if os.path.exists(ruta_final):
                         with open(ruta_final, "rb") as f:
                             st.download_button(
@@ -154,7 +159,6 @@ def vista_principal(ruta_ordenes) -> None:
                 except Exception as e:
                     st.error(f"❌ Error al cerrar la orden: {e}")
 
-    # 6️⃣ Botones adicionales
     mostrar_botones_descarga(df_disp)
 
     if st.session_state.get("mostrar_descarga_final", False):
@@ -167,5 +171,4 @@ def vista_principal(ruta_ordenes) -> None:
                 ruta_ultima_orden=""
             )
             st.rerun()
-
 
